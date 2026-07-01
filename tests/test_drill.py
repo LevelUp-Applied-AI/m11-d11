@@ -11,30 +11,59 @@ Required coverage:
   4. Every non-/metrics response has an X-Request-ID response header that is non-empty.
 """
 
-import pytest
+import re
+
+from fastapi.testclient import TestClient
+
+from app import app
+
+
+client = TestClient(app)
+
+
+def drive_traffic():
+    for _ in range(3):
+        client.post("/echo", json={"message": "hi"})
+    for _ in range(2):
+        client.get("/sum", params={"a": 1, "b": 2})
 
 
 def test_metrics_endpoint_returns_200_after_traffic():
     """GET /metrics returns 200 after 3 calls to /echo and 2 calls to /sum."""
-    # TODO: import app from your module, use FastAPI's TestClient to issue the
-    # 5 calls, then GET /metrics and assert status_code == 200.
-    pytest.fail("Not implemented -- write your test here")
+    drive_traffic()
+    resp = client.get("/metrics")
+    assert resp.status_code == 200
 
 
 def test_metrics_body_contains_three_metric_families():
     """The /metrics body contains requests_total, request_latency_seconds, inflight_requests."""
-    # TODO: GET /metrics and assert all three metric names are substrings of resp.text.
-    pytest.fail("Not implemented -- write your test here")
+    resp = client.get("/metrics")
+    assert "requests_total" in resp.text
+    assert "request_latency_seconds" in resp.text
+    assert "inflight_requests" in resp.text
 
 
 def test_echo_counter_has_expected_value():
     """After 3 calls to /echo, requests_total{path="/echo",status="200"} >= 3."""
-    # TODO: issue 3 POST /echo calls, GET /metrics, parse with a regex, assert >= 3.
-    pytest.fail("Not implemented -- write your test here")
+    for _ in range(3):
+        client.post("/echo", json={"message": "hi"})
+
+    resp = client.get("/metrics")
+    match = re.search(
+        r'^requests_total\{path="/echo",status="200"\}\s+([0-9.eE+-]+)',
+        resp.text,
+        re.MULTILINE,
+    )
+    assert match is not None
+    assert float(match.group(1)) >= 3
 
 
 def test_x_request_id_header_set_on_every_non_metrics_response():
     """Every non-/metrics response carries a non-empty X-Request-ID header."""
-    # TODO: call /echo and /sum, assert response.headers["X-Request-ID"] is set
-    # and non-empty for each.
-    pytest.fail("Not implemented -- write your test here")
+    responses = [
+        client.post("/echo", json={"message": "hi"}),
+        client.get("/sum", params={"a": 1, "b": 2}),
+    ]
+
+    for response in responses:
+        assert response.headers.get("X-Request-ID")
